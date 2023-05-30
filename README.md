@@ -5,7 +5,7 @@ This is the online repository for the bachelor thesis of Alexandre Kobrin at the
 ### Quick Acess
 Files which are most likely to attract aditional attention have been listed under "Quick Acess". For HTML files it is advised to download them and opening them with Google Chrome (version: 115.0.5790.3). 
 
-### Raw code
+### Raw Codes
 Given the large inital files, the actual operations on the data were not performed through Jupyter Notebook, which was only written for documentation purpouses. The original .py files are provided as a complement to the documentation.
 
 ### Appendix
