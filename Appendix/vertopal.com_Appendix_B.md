@@ -1,0 +1,613 @@
+---
+author: Alexandre Kobrin - Bachelor Thesis
+output:
+  html_document:
+    toc: true
+  pdf_document:
+    toc: true
+subtitle: Documentation of Analysis in R
+title: Analysis - Appendix B
+---
+
+## Loading packages and data
+
+\`\`\`{r, warnings= FALSE }
+
+# Load the necessary packages
+
+library(tidyverse) library(car) library(knitr) library(glmnet)
+library(performance) library(ggplot2) library(dplyr) library(glmnet)
+library(caret) library(readr) library(latex2exp)
+
+
+    Easiest way to have the data in this notebook is to import the database, however bellow is an option with a manual path that can be commented out.
+
+    ```{r}
+    # Set working directory 
+    #knitr::opts_knit$set(root.dir = "path to file")
+
+    # Importing data
+    rent_data <- read.csv('data/rents_S3_Done.csv')
+
+    #rent_data <- rents_S3_Done
+
+This is a quick small overview of the data to check for any anomalies.
+To see more the table for each variable can be commented and
+un-commented.
+
+``` {r}
+
+table(rent_data$a_nb_rooms)
+table(rent_data$a_netm_mon)
+table(rent_data$age)
+table(rent_data$a_sicht)
+table(rent_data$a_balkon)
+table(rent_data$region)
+table(rent_data$a_zip_2)
+table(rent_data$a_kat_o_2)
+```
+
+## Preparing data for regression
+
+Certain variables are transformed to categorical variables. The mutate()
+function is used to create new variables based on the existing
+variables, and the case_when() function define categories for the
+numerical values. It assignes descriptive labels to each category within
+the variables a_sicht (view), a_balkon (balcony), and region. These
+variables are considered nominal categorical variables, as their
+categories only serve to distinguish between different groups or
+attributes without any hierarchical structure. Next, the mutate_if()
+function is used to convert all character variables to factor variables,
+ensuring that the categorical variables are treated as factors in the
+analysis. This allows allows R to create the necessary dummy variables
+for each category. Lastly, the a_nb_rooms variable is treated as an
+ordered categorical variable. The rooms variable is ordered as unlike
+the other categorical variables, rooms can be ranked from fewer to more
+rooms, which implies a progression in the data.
+
+``` {r}
+
+#assigning the different numerical values to their categories 
+rent_data <- rent_data %>%
+  mutate(
+    a_sicht = case_when(
+      a_sicht == 0 ~ 'no_view',
+      a_sicht == 1 ~ 'in_general',
+      a_sicht == 2 ~ 'to_the_mountains',
+      a_sicht == 3 ~ 'on_the_lake',
+      a_sicht == 4 ~ 'Mountains_and_lake',
+      a_sicht == 5 ~ 'Not_lake_and_mountain'),
+    a_balkon = case_when(a_balkon == 1 ~ 'no balcony',
+                         a_balkon == 2 ~ 'general',
+                         a_balkon == 3 ~ 'small balcony',
+                         a_balkon == 4 ~ 'big balcony',
+                         a_balkon == 5 ~ 'terasse',
+                         a_balkon == 6 ~ 'roof terasse'),
+    region = case_when(region == 0 ~ 'german',
+                       region == 1 ~ 'french',
+                       region == 2 ~ 'italian'),
+    a_kat_o_2 = case_when(a_kat_o_2 == "AP" ~ 'apartment',
+                       a_kat_o_2 == "HO" ~ 'house')
+  )
+
+#convert all character variables to factors
+rent_data <- rent_data %>%
+  mutate_if(is.character, as.factor)
+
+#set number of rooms as an ordered factor variable
+sort(unique(rent_data$a_nb_rooms))
+rent_data$a_nb_rooms<-factor(rent_data$a_nb_rooms,levels =c(sort(unique(rent_data$a_nb_rooms))),ordered = T )
+rent_data$a_nb_rooms<-as.character(rent_data$a_nb_rooms)
+unique(rent_data$a_nb_rooms)
+glimpse(rent_data)
+```
+
+## Model 1 - No interactions
+
+Building multiple linear regression model with all the variables
+included but no interaction term.
+
+``` {r}
+options(scipen = 999)
+no_interaction_model <- lm(a_netm_mon ~ a_surface_living + age + a_sicht + a_balkon + region + a_zip_2 + a_nb_rooms + a_kat_o_2, data=rent_data)
+summary(no_interaction_model)
+```
+
+Variance Inflation Factor test on model 1, if there are variables that
+has a greater value then 5 they could be subject to multicolinearity
+issues.
+
+``` {r}
+vif(no_interaction_model)
+```
+
+## Checking for Interactions
+
+The following plots are visualizations of the interaction terms between
+tdifferent variables and the region variable, showing how the
+relationship between them and net monthly rent (a_netm_mon) varies
+across different regions.
+
+The geom_smooth() function is used to fit linear regression models for
+each region, with the method = 'lm' argument specifying the use of
+linear models. The se = FALSE argument removes the shaded confidence
+intervals around the regression lines, resulting in a cleaner and more
+focused visualization of the interaction effect.
+
+#### Interaction between Living Surface and Region
+
+\`\`\`{r,warnings= FALSE, message=FALSE} ggplot(data = rent_data, aes(x
+= a_surface_living, y = a_netm_mon, color = region)) +
+geom_smooth(method = 'lm', se = FALSE, aes(linetype = region), size =
+1.2) + scale_color_manual(values = c("black", "black", "black")) +
+scale_linetype_manual(values = c("solid", "dashed", "dotted")) +
+theme_classic() + guides(linetype = FALSE)
+
+
+
+    #### Interaction between Age of building and region and Region
+
+    ```{r,warnings= FALSE, message=FALSE}
+    ggplot(data = rent_data, aes(x = age, y = a_netm_mon, color = region)) +
+      geom_smooth(method = 'lm', se = FALSE, aes(linetype = region), size = 1.2) +
+      scale_color_manual(values = c("black", "black", "black")) +
+      scale_linetype_manual(values = c("solid", "dashed", "dotted")) +
+      theme_classic() +
+      guides(linetype = FALSE)
+
+#### Interaction between number of rooms and Region
+
+\`\`\`{r,fig.width=15, fig.height=10, warnings= FALSE, message=FALSE}
+interaction.plot(x.factor =
+rent_data$region,  trace.factor = rent_data$a_nb_rooms, response =
+rent_data$a_netm_mon, fun = mean,  col = ifelse(rent_data$a_nb_rooms ==
+1, "black", "black"), lwd = 1.2, lty = 1:3, type = "b", xlab = "Region",
+ylab = "Monthly Net Rent")
+
+
+    #### Interaction between view and Region
+
+    ```{r, fig.width=15, fig.height=10}
+    interaction.plot(x.factor = rent_data$region,
+                     trace.factor = rent_data$a_sicht,
+                     response = rent_data$a_netm_mon, fun = mean)
+
+#### Interaction between Balcony and Region
+
+\`\`\`{r,fig.width=15, fig.height=10} interaction.plot(x.factor =
+rent_data$region,  trace.factor = rent_data$a_balkon, response =
+rent_data\$a_netm_mon, fun = mean)
+
+#Extraction of exact values since the interaction is small x\<-rent_data
+%\>% group_by(region,a_balkon) %\>%
+summarise(a_netm_mon=mean(a_netm_mon,na.rm=T)) kable(x, format =
+"markdown")
+
+
+    ## Model 1.1.2 - Interactions
+
+    Building multiple linear regression model with all the variables and relevant interaction term.
+
+    ```{r}
+    options(scipen = 999)
+    interaction_model <- lm(a_netm_mon ~ a_surface_living + age + a_sicht + a_balkon + region + a_zip_2 + a_nb_rooms + a_kat_o_2 + region:a_surface_living + region:a_nb_rooms + region:a_sicht + region:a_balkon, data=rent_data)
+    summary(interaction_model)
+
+## Verifying regression assumptions
+
+``` {r}
+#Linearity Assumption
+plot(interaction_model,1)
+
+#Normality Assumption
+plot(interaction_model,2)
+
+#Homoscedascity
+plot(interaction_model,3)
+
+#Influencial Outliers
+plot(interaction_model,5)
+
+y<-cooks.distance(interaction_model)
+
+summary(y)
+```
+
+## Model 1.2 - Interactionand and variable transformation
+
+Building multiple linear regression model with all the variables and
+relevant interaction term and variables transformation.
+
+``` {r}
+options(scipen = 999)
+interaction_model_v2 <- lm(a_netm_mon ~ log(a_surface_living) + age + a_sicht + a_balkon + region + a_zip_2 + a_nb_rooms +a_kat_o_2+ region:a_nb_rooms + region:a_sicht + region:a_balkon + region:a_surface_living, data=rent_data)
+summary(interaction_model_v2)
+```
+
+## Verifying regression assumptions (2)
+
+``` {r}
+#Linearity Assumption
+plot(interaction_model_v2,1)
+
+#Normality Assumption
+plot(interaction_model_v2,2)
+
+#Homoscedascity
+plot(interaction_model_v2,3)
+
+#Influencial Outliers
+plot(interaction_model_v2,5)
+
+y_interaction_model_v2<-cooks.distance(interaction_model_v2)
+
+summary(y_interaction_model_v2)
+```
+
+Checking again for correlation between variables, since the introduction
+of interaction terms seems to have brought multicollinearity.
+Multicollinarity is present due to interaction terms.
+
+``` {r}
+library(ggplot2)
+library(reshape2)
+
+# Create a matrix of predictors using the formula and data frame
+X <- model.matrix(interaction_model_v2, data = rent_data)
+
+# Create a correlation matrix for the variables in the model
+corr_matrix <- cor(X)
+
+# Melt the correlation matrix to create a data frame suitable for ggplot2
+corr_df <- melt(corr_matrix)
+
+# Create a heatmap of the pairwise correlations
+ggplot(corr_df, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(title = "Pairwise Correlation Heatmap", x = "", y = "")
+```
+
+Appending prediction to original data frame in order to visualise
+extreme rents data points.
+`{r, include=FALSE} rents_preditions = rent_data %>%   mutate(predictions = predict(interaction_model, newdata = rent_data))`
+
+## Model 2 - Stepwise Regression
+
+Stepwise regression model
+
+``` {r}
+library(MASS)
+model_step <- stepAIC(interaction_model_v2, direction = "backward", k = 2, trace = 2)
+plot(model_step$anova$AIC, type = "b", xlab = "Number of Variables", ylab = "AIC")
+
+```
+
+The stepwise approach improves the AIC of the model. The same robustness
+test is performed.
+
+``` {r}
+#Linearity Assumption
+plot(model_step,1)
+
+#Normality Assumption
+plot(model_step,2)
+
+#Homoscedascity
+plot(model_step,3)
+
+#Influencial Outliers
+plot(model_step,5)
+
+y_model_step<-cooks.distance(model_step)
+
+summary(y_model_step)
+```
+
+Looking at the number of observation for each number of rooms.
+
+``` {r}
+rent_data %>%
+  count(a_nb_rooms)
+```
+
+Comparing the regression model (interaction_model_v2) with interaction
+terms and variable transformation ti the stepwise regression model.
+
+``` {r}
+
+
+
+#Calculate RSNE
+aic_interaction_model_v2 <- AIC(interaction_model_v2)
+aic_stepwise <- AIC(model_step)
+cat("AIC for model 1.2:", aic_interaction_model_v2, "\n")
+cat("AIC for the stepwise regression model:", aic_stepwise, "\n")
+
+#Check length in order to avoid warning (data consitency check)
+predicted_interaction_model_v2 <- predict(interaction_model_v2)
+predicted_stepwise <- predict(model_step)
+actual <- rent_data$a_netm_mon
+cat("Length of actual values:", length(actual), "\n")
+cat("Length of model 1.2 values:", length(predicted_interaction_model_v2), "\n")
+cat("Length of predicted_stepwise values:", length(predicted_stepwise), "\n")
+
+# Calculate RMSE 
+rmse_interaction_model_v2 <- suppressWarnings(sqrt(mean((predicted_interaction_model_v2 - actual)^2)))
+rmse_stepwise <- suppressWarnings(sqrt(mean((predicted_stepwise - actual)^2)))
+cat("RMSE for for model 1.2l:", rmse_interaction_model_v2, "\n")
+cat("RMSE for the stepwise regression model:", rmse_stepwise, "\n")
+
+```
+
+## Model 3 - Ridge Regression
+
+Building a ridge regression model
+
+``` {r}
+#adding variables to formula variable
+formula <- a_netm_mon ~ a_surface_living + age + a_sicht + a_balkon + region + a_zip_2 + a_nb_rooms + region:a_sicht + region:a_balkon + region:a_surface_living + region:a_nb_rooms + region:age
+
+#creating a model matrix, it can be used to predict the variable y
+X <- model.matrix(formula, data = rent_data)
+Y <- rent_data$a_netm_mon
+
+#To verify that values are numeric (optional)
+#View(X)
+
+ridge_model<-glmnet(X, Y,alpha = 0)
+summary(ridge_model)
+
+#performing cross validation, 10 fold by default
+#Y axis is the mean square error, the goal of the regression is to reduce it. To accomplish this different folds are fitted to the data in a cross validation. The graph shows for which value of lambda the mean square value will be minimum. The whole process verifies the robustness of the fitted model.
+cv_model<-cv.glmnet(X, Y,alpha = 0)
+plot(cv_model)
+cv_model$lambda.min
+
+#get the range of lambda values within one standard error of the minimum
+lambda_range <- cv_model$lambda.1se
+
+#gheck the range of lambda values
+print(cv_model$lambda.1se)
+print("sep")
+print(cv_model$lambda.min)
+#--
+#setting lambda in the model
+fitted_ridge_model<-glmnet(X, Y,alpha = 0,lambda = cv_model$lambda.min)
+coef(fitted_ridge_model)
+
+ypred_ridge <- predict(fitted_ridge_model, newx = X)
+
+RMSE_ridge <- sqrt(mean((Y - ypred_ridge)^2))
+print(paste("RMSE for the ridge regression model:", RMSE_ridge))
+
+#calculate R-squared
+TSS <- sum((Y - mean(Y))^2) # total sum of squares
+RSS <- sum((Y - ypred_ridge)^2) # residual sum of squares
+
+R_squared_ridge <- 1 - (RSS / TSS)
+
+print(paste("R-squared for the ridge regression model:", R_squared_ridge))
+
+```
+
+## Visualization of interaction effects with 0.05 significance level
+
+**Note**: The following plots have been esthitically mdified for the
+thesis in order to meet standards. The fine design tunning seemed
+unnessesarily detailed, thus only simple tables are included.
+
+Visualization of the effect of region on the view.
+
+``` {r}
+
+
+# New coefficients
+coeff <- c(215.80580268, # German region - View mountain and lake
+        -190.97553010, # Italian region - View on mountain and lake
+
+       48.91806510,   # German region - Not mountain and lake
+       145.35264984,  # Italian region - Not mountain and lake
+
+       147.28729150,  # German region - View on the lake
+       -95.86363811,  # Italian region - View on the lake
+
+       34.24046513,   # German region - View on the mountains
+       51.33854512,  # Italian region - View on the mountains
+
+       -65.00933841,  # German region - No view
+       0             # Italian region - No view NO DATA
+)
+
+
+
+
+Variable <- c("German region - View mountain and lake",
+           "Italian region - View on mountain and lake",
+           
+           "German region - Not mountain and lake",
+           "Italian region - Not mountain and lake",
+           
+           "German region - View on the lake",
+           "Italian region - View on the lake",
+           
+           "German region - View on the mountains",
+           "Italian region - View on the mountains",
+           
+           "German region - No view",
+           "Italian region - No view NO DATA"
+)
+dt<-data.frame(Variable,coeff)
+
+# Plot
+library(ggplot2)
+dt %>% 
+  mutate(Variable = factor(Variable, levels = Variable)) %>%
+  ggplot(aes(x = Variable, y = coeff)) +
+  geom_bar(stat = "identity", position = "dodge", fill = "black") +
+  coord_flip() +
+  labs(title = "Comparison of Real Estate Value Based on Views", 
+       x = "Location - Scenic View Category",
+       y = "Estimated Coefficients") +
+  theme_bw() +
+  theme(plot.title = element_text(face="bold"), 
+        axis.title.x = element_text(face="bold"), 
+        axis.title.y = element_text(face="bold"))
+```
+
+Visualization of the effect of region on balconies.
+
+``` {r}
+# New coefficients
+coeff <- c(-110.98359471, # German region - General balcony
+253.17064821, # Italian region - General balcony
+
+       -133.88474361,  # German region - No balcony
+       6.79253953,     # Italian region - No balcony
+       
+       -67.88322696,   # German region - Roof terasse
+       0,              # Italian region - Roof terasse (No data available, kept old value)
+       
+       -206.42944207,  # German region - Small balcony
+       -5.88513478,    # Italian region - Small balcony
+       
+       42.30112387,    # German region - Terasse balcony
+       151.56251002    # Italian region - Terasse balcony
+)
+
+
+Variable <- c("German region - General balcony",
+           "Italian region - General balcony",
+           
+           "German region - No balcony",
+           "Italian region - No balcony",
+           
+           "German region - Roof terasse",
+           "Italian region - Roof terasse NO DATA",
+           
+           "German region - Small balcony",
+           "Italian region - Small balcony",
+           
+           "German region - Terasse balcony",
+           "Italian region - Terasse balcony"
+)
+
+
+dt<-data.frame(Variable,coeff)
+
+# Plot
+library(ggplot2)
+dt %>% 
+  mutate(Variable = factor(Variable, levels = Variable)) %>%
+  ggplot(aes(x = Variable, y = coeff)) +
+  geom_bar(stat = "identity", position = "dodge", fill = "black") +
+  coord_flip() +
+  labs(title = "Comparison of Real Estate Value Based on Balconies", 
+       x = "Type of balcony",
+       y = "Estimated Coefficients") +
+  theme_bw() +
+  theme(plot.title = element_text(face="bold"), 
+        axis.title.x = element_text(face="bold"), 
+        axis.title.y = element_text(face="bold"))
+```
+
+Visualization of the effect of region on the different number of rooms.
+
+``` {r}
+region_german <- list(
+a_nb_rooms1.5 = 51.72145158,
+a_nb_rooms2 = 74.50276965,
+a_nb_rooms2.5 = 42.60221411,
+a_nb_rooms3 = 59.68621761,
+a_nb_rooms3.5 = 21.63586165,
+a_nb_rooms4 = -28.43466892,
+a_nb_rooms4.5 = -61.36824381,
+a_nb_rooms5 = -97.47528706,
+a_nb_rooms5.5 = -123.97751323,
+a_nb_rooms6 = -216.62710495,
+a_nb_rooms6.5 = -228.05071391,
+a_nb_rooms7 = -338.47081685,
+a_nb_rooms7.5 = -224.54492745,
+a_nb_rooms8 = -287.21374437,
+a_nb_rooms8.5 = 40.82258686,
+a_nb_rooms9 = -589.46113411,
+a_nb_rooms9.5 = 192.85819822,
+a_nb_rooms10 = -101.74969288,
+a_nb_rooms10.5 = -278.23149543,
+a_nb_rooms14 = 0
+)
+
+
+
+# Convert the list to a data frame
+region_german_df <- data.frame(
+  nb_rooms = c(1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 14),
+  values = unlist(region_german)
+)
+# Transforming the data into a data frame
+region_german_df <- data.frame(nb_rooms = names(region_german), values = unlist(region_german))
+
+region_german_df %>% 
+  mutate(nb_rooms = factor(nb_rooms, levels = nb_rooms)) %>%
+  ggplot(aes(x = nb_rooms, y = values)) +
+  geom_bar(stat = "identity", position = "dodge", fill = "black") +
+  coord_flip() +
+  labs(title = "Interaction coefficient of German speaking region", 
+       x = "Number of rooms",
+       y = "Coefficient") +
+  theme_bw() +
+  theme(plot.title = element_text(face="bold"), 
+        axis.title.x = element_text(face="bold"), 
+        axis.title.y = element_text(face="bold"))
+```
+
+``` {r}
+
+
+region_italian <- list(
+ a_nb_rooms1.5 = -221.78025803,
+a_nb_rooms2 = -256.51529117,
+a_nb_rooms2.5 = -111.81994498,
+a_nb_rooms3 = -35.27375170,
+a_nb_rooms3.5 = -20.81747353,
+a_nb_rooms4 = -55.88642957,
+a_nb_rooms4.5 = -104.22143773,
+a_nb_rooms5 = -46.95849964,
+a_nb_rooms5.5 = -34.91317283,
+a_nb_rooms6 = -410.03982875,
+a_nb_rooms6.5 = -316.42893754,
+a_nb_rooms7 = -284.54040086,
+a_nb_rooms7.5 = -49.95527093,
+  a_nb_rooms8 = 0,  # No update provided for a_nb_rooms8
+  a_nb_rooms8.5 = 440.80223928,
+  a_nb_rooms9 = 0,  # No update provided for a_nb_rooms9
+  a_nb_rooms9.5 = 0,  # No update provided for a_nb_rooms9.5
+  a_nb_rooms10 = 0,  # No update provided for a_nb_rooms10
+  a_nb_rooms10.5 = 0,  # No update provided for a_nb_rooms10.5
+  a_nb_rooms14 = 0  # No update provided for a_nb_rooms14
+)
+
+
+# Convert the list to a data frame
+region_german_df <- data.frame(
+  nb_rooms = c(1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 14),
+  values = unlist(region_italian)
+)
+# Transforming the data into a data frame
+region_italian_df <- data.frame(nb_rooms = names(region_italian), values = unlist(region_italian))
+
+region_italian_df %>% 
+  mutate(nb_rooms = factor(nb_rooms, levels = nb_rooms)) %>%
+  ggplot(aes(x = nb_rooms, y = values)) +
+  geom_bar(stat = "identity", position = "dodge", fill = "black") +
+  coord_flip() +
+  labs(title = "Interaction coefficient of Italian speaking region", 
+       x = "Number of rooms",
+       y = "Coefficient") +
+  theme_bw() +
+  theme(plot.title = element_text(face="bold"), 
+        axis.title.x = element_text(face="bold"), 
+        axis.title.y = element_text(face="bold"))
+
+```
