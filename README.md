@@ -1,6 +1,6 @@
 # Bachelor_Thesis
 
-This is the online repository for the bachelor thesis of Alexandre Kobrin at the University of St. Gallen, supervised by professor Roland Fuess. Both Appenix A and B are stored in their original format. 
+This is the online repository for the bachelor thesis of Alexandre Kobrin at the University of St. Gallen, supervised by Prof. Roland Fuess. Both Appenix A and B are stored in their original format. 
 
 ### Appendix
 Appendix A and B are both originally not in a pdf format. They were submitted as such to be uploadable in compas. The Jupyter Notebook and R Markdown files are included in the Appendix file. 
